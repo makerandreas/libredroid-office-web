@@ -1,4 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { EditorProvider, useEditorState, SelectionType } from '../context/EditorContext';
 import { SimplifiedRibbon } from './SimplifiedRibbon';
 import { FloatingContextualToolbar } from './FloatingContextualToolbar';
@@ -70,7 +71,7 @@ const CalcTableRender = React.memo<{
 });
 
 function EditorLayout({ onBack }: { onBack: () => void }) {
-  const { module, isRibbonOpen, setIsRibbonOpen, setSelectionType, setFctPosition, documentData, setDocumentData } = useEditorState();
+  const { module, isRibbonOpen, setIsRibbonOpen, setSelectionType, setFctPosition, documentData, setDocumentData, isEqOpen, setIsEqOpen } = useEditorState();
   const containerRef = useRef<HTMLDivElement>(null);
   const writerEditTimeout = useRef<NodeJS.Timeout | null>(null);
   const calcEditTimeout = useRef<NodeJS.Timeout | null>(null);
@@ -90,7 +91,6 @@ function EditorLayout({ onBack }: { onBack: () => void }) {
   const currentSheetData = isMultiSheet ? documentData[activeSheetIdx]?.data : (Array.isArray(documentData) ? documentData : null);
 
   // Equation Editor State
-  const [isEqOpen, setIsEqOpen] = useState(false);
   const [eqText, setEqText] = useState("\\sum_{i=1}^n x_i");
   const eqPreviewRef = useRef<HTMLDivElement>(null);
 
@@ -213,18 +213,39 @@ function EditorLayout({ onBack }: { onBack: () => void }) {
       
       if (activeCellCoords && currentSheetData) {
           const newDataObj = [...documentData];
+          let nextRow = activeCellCoords.row + 1;
           if (isMultiSheet) {
               const sheetData = [...newDataObj[activeSheetIdx].data];
               if (!sheetData[activeCellCoords.row]) sheetData[activeCellCoords.row] = [];
               sheetData[activeCellCoords.row] = [...sheetData[activeCellCoords.row]];
               sheetData[activeCellCoords.row][activeCellCoords.col] = formulaValue;
+              
+              // Ensure the next row exists
+              if (!sheetData[nextRow]) sheetData[nextRow] = Array(sheetData[activeCellCoords.row].length).fill('');
+              
               newDataObj[activeSheetIdx] = { ...newDataObj[activeSheetIdx], data: sheetData };
           } else {
               if (!newDataObj[activeCellCoords.row]) newDataObj[activeCellCoords.row] = [];
               newDataObj[activeCellCoords.row] = [...newDataObj[activeCellCoords.row]];
               newDataObj[activeCellCoords.row][activeCellCoords.col] = formulaValue;
+              
+              // Ensure next row exists
+              if (!newDataObj[nextRow]) newDataObj[nextRow] = Array(newDataObj[activeCellCoords.row].length).fill('');
           }
           setDocumentData(newDataObj);
+          
+          // Move Focus Down
+          setActiveCellCoords({ row: nextRow, col: activeCellCoords.col });
+          
+          // Read value for new cell
+          let nextVal = "";
+          if (isMultiSheet) {
+             const sheet = newDataObj[activeSheetIdx].data;
+             nextVal = sheet[nextRow]?.[activeCellCoords.col] || "";
+          } else {
+             nextVal = newDataObj[nextRow]?.[activeCellCoords.col] || "";
+          }
+          setFormulaValue(String(nextVal));
       }
   };
 
@@ -275,9 +296,6 @@ function EditorLayout({ onBack }: { onBack: () => void }) {
            </h2>
         </div>
         <div className="flex items-center gap-1">
-           <button onClick={() => setIsEqOpen(true)} className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-surface-variant text-on-surface transition-colors" title="Insert Equation">
-             <span className="material-symbols-outlined">functions</span>
-           </button>
            <button className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-surface-variant text-on-surface transition-colors">
              <span className="material-symbols-outlined">search</span>
            </button>
@@ -401,6 +419,7 @@ function EditorLayout({ onBack }: { onBack: () => void }) {
             {module === 'calc' && documentData !== null && currentSheetData && Array.isArray(currentSheetData) && (
               <div className="w-full overflow-x-auto no-scrollbar pb-6 relative">
                  <CalcTableRender 
+                    key={`sheet-${activeSheetIdx}`}
                     sheetData={currentSheetData}
                     activeCellCoords={activeCellCoords}
                     formulaValue={formulaValue}
@@ -445,63 +464,68 @@ function EditorLayout({ onBack }: { onBack: () => void }) {
       )}
 
       {/* Equation Editor Dialog */}
-      <AnimatePresence>
-         {isEqOpen && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
-              onClick={() => setIsEqOpen(false)}
-            >
-               <motion.div
-                 initial={{ scale: 0.95, y: 10 }}
-                 animate={{ scale: 1, y: 0 }}
-                 exit={{ scale: 0.95, y: 10 }}
-                 onClick={e => e.stopPropagation()}
-                 className="bg-surface rounded-2xl w-full max-w-lg shadow-xl overflow-hidden flex flex-col border border-outline/20"
-               >
-                 <div className="flex items-center justify-between p-4 border-b border-outline/20 bg-surface-variant/30">
-                    <h3 className="font-medium text-lg flex items-center gap-2">
-                       <span className="material-symbols-outlined text-primary">functions</span>
-                       Insert Equation
-                    </h3>
-                    <button onClick={() => setIsEqOpen(false)} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-surface-variant transition-colors">
-                       <span className="material-symbols-outlined text-[20px]">close</span>
-                    </button>
-                 </div>
-                 
-                 <div className="flex flex-col p-6 gap-6">
-                    <div className="flex flex-col gap-2">
-                       <label className="text-xs font-medium tracking-wide text-on-surface-variant uppercase">LaTeX Input</label>
-                       <textarea 
-                          value={eqText}
-                          onChange={(e) => setEqText(e.target.value)}
-                          className="w-full bg-surface-variant/50 border border-outline/30 rounded-lg p-3 text-sm font-mono focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all resize-none h-24 text-on-surface"
-                          placeholder="\sum_{i=1}^n x_i"
-                       />
-                    </div>
-                    
-                    <div className="flex flex-col gap-2">
-                       <label className="text-xs font-medium tracking-wide text-on-surface-variant uppercase">Preview Result (KaTeX)</label>
-                       <div 
-                         className="w-full min-h-[100px] border border-outline/20 rounded-lg bg-white p-4 flex items-center justify-center overflow-x-auto shadow-inner text-on-surface"
-                         ref={eqPreviewRef}
-                       ></div>
-                    </div>
-                 </div>
-
-                 <div className="p-4 border-t border-outline/20 bg-surface-variant/20 flex justify-end gap-3">
-                    <button onClick={() => setIsEqOpen(false)} className="px-5 py-2 rounded-full font-medium text-sm hover:bg-surface-variant transition-colors text-on-surface-variant">Cancel</button>
-                    <button onClick={handleInsertEquation} className="px-5 py-2 rounded-full font-medium text-sm bg-primary text-on-primary hover:bg-primary/90 shadow-sm transition-colors flex items-center gap-2">
-                       <span className="material-symbols-outlined text-[18px]">add_circle</span>
-                       Insert
-                    </button>
-                 </div>
-               </motion.div>
-            </motion.div>
-         )}
-      </AnimatePresence>
+      {createPortal(
+        <AnimatePresence>
+           {isEqOpen && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
+                onClick={() => setIsEqOpen(false)}
+              >
+                 <motion.div
+                   initial={{ scale: 0.95, y: 10 }}
+                   animate={{ scale: 1, y: 0 }}
+                   exit={{ scale: 0.95, y: 10 }}
+                   onClick={e => e.stopPropagation()}
+                   className="bg-surface rounded-2xl w-full max-w-lg shadow-xl overflow-hidden flex flex-col border border-outline/20"
+                 >
+                   <div className="flex items-center justify-between p-4 border-b border-outline/20 bg-surface-variant/30">
+                      <h3 className="font-medium text-lg flex items-center gap-2">
+                         <span className="material-symbols-outlined text-primary">functions</span>
+                         Insert Equation
+                      </h3>
+                      <button onClick={() => setIsEqOpen(false)} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-surface-variant transition-colors">
+                         <span className="material-symbols-outlined text-[20px]">close</span>
+                      </button>
+                   </div>
+                   
+                   <div className="flex flex-col p-6 gap-6">
+                      <div className="flex flex-col gap-2">
+                         <label className="text-xs font-medium tracking-wide text-on-surface-variant uppercase">LaTeX Input</label>
+                         <textarea 
+                            value={eqText}
+                            onChange={(e) => setEqText(e.target.value)}
+                            className="w-full bg-surface-variant/50 border border-outline/30 rounded-lg p-3 text-sm font-mono focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all resize-none h-24 text-on-surface"
+                            placeholder="\sum_{i=1}^n x_i"
+                         />
+                      </div>
+                      
+                      <div className="flex flex-col gap-2 relative">
+                         <label className="text-xs font-medium tracking-wide text-on-surface-variant uppercase flex justify-between">
+                            Preview
+                            <span className="text-[10px] text-outline normal-case">KaTeX rendered</span>
+                         </label>
+                         <div className="w-full min-h-[120px] bg-white border border-outline/20 rounded-lg p-6 flex justify-center items-center overflow-x-auto">
+                            <div ref={eqPreviewRef} className="text-xl"></div>
+                         </div>
+                      </div>
+                   </div>
+                   
+                   <div className="p-4 border-t border-outline/20 bg-surface-variant/20 flex justify-end gap-3">
+                      <button onClick={() => setIsEqOpen(false)} className="px-5 py-2 rounded-full font-medium text-sm hover:bg-surface-variant transition-colors text-on-surface-variant">Cancel</button>
+                      <button onClick={handleInsertEquation} className="px-5 py-2 rounded-full font-medium text-sm bg-primary text-on-primary hover:bg-primary/90 shadow-sm transition-colors flex items-center gap-2">
+                         <span className="material-symbols-outlined text-[18px]">add_circle</span>
+                         Insert
+                      </button>
+                   </div>
+                 </motion.div>
+              </motion.div>
+           )}
+        </AnimatePresence>,
+        document.body
+      )}
     </div>
   );
 }

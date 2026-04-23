@@ -3,7 +3,7 @@ import { useEditorState } from '../context/EditorContext';
 import { motion } from 'motion/react';
 
 export function SimplifiedRibbon() {
-  const { module, setIsRibbonOpen } = useEditorState();
+  const { module, setIsRibbonOpen, setIsEqOpen } = useEditorState();
   const [activeTab, setActiveTab] = useState('Home');
 
   // Ribbon tabs logic per Phase 4 requirements
@@ -78,6 +78,7 @@ export function SimplifiedRibbon() {
                 if (icon === 'format_bold') document.execCommand('bold');
                 else if (icon === 'format_italic') document.execCommand('italic');
                 else if (icon === 'format_underlined') document.execCommand('underline');
+                else if (icon === 'functions') setIsEqOpen(true);
              }}
              className="w-10 h-10 flex items-center justify-center rounded-[8px] hover:bg-surface-variant text-on-surface transition-colors shrink-0"
           >

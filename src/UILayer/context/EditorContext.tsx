@@ -17,6 +17,8 @@ interface EditorContextType {
   setDocumentData: (data: any) => void;
   isParsing: boolean;
   setIsParsing: (parsing: boolean) => void;
+  isEqOpen: boolean;
+  setIsEqOpen: (open: boolean) => void;
 }
 
 const EditorContext = createContext<EditorContextType | undefined>(undefined);
@@ -28,6 +30,7 @@ export function EditorProvider({ children }: { children: ReactNode }) {
   const [fctPosition, setFctPosition] = useState<{ x: number; y: number } | null>(null);
   const [documentData, setDocumentData] = useState<any | null>(null);
   const [isParsing, setIsParsing] = useState(false);
+  const [isEqOpen, setIsEqOpen] = useState(false);
 
   return (
     <EditorContext.Provider value={{
@@ -42,7 +45,9 @@ export function EditorProvider({ children }: { children: ReactNode }) {
       documentData,
       setDocumentData,
       isParsing,
-      setIsParsing
+      setIsParsing,
+      isEqOpen,
+      setIsEqOpen
     }}>
       {children}
     </EditorContext.Provider>
